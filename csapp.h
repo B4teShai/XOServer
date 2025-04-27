@@ -127,6 +127,8 @@ void Connect(int sockfd, struct sockaddr *serv_addr, int addrlen);
 /* DNS wrappers */
 struct hostent *Gethostbyname(const char *name);
 struct hostent *Gethostbyaddr(const char *addr, int len, int type);
+void Getnameinfo(const struct sockaddr *sa, socklen_t salen, char *host, 
+                 size_t hostlen, char *serv, size_t servlen, int flags);
 
 /* Pthreads thread control wrappers */
 void Pthread_create(pthread_t *tidp, pthread_attr_t *attrp, 

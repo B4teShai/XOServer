@@ -8,7 +8,7 @@
 
 #define BOARD_SIZE 20
 #define WIN_CONDITION 5
-#define MAXLINE 1024
+#define XO_MAXLINE 1024
 
 // Game state
 typedef struct {
@@ -28,7 +28,7 @@ typedef struct {
     int type;
     int row;
     int col;
-    char message[MAXLINE];
+    char message[XO_MAXLINE];
 } message_t;
 
 // Function prototypes

@@ -1,5 +1,15 @@
 #include "xo.h"
 
+// Global game state
+game_state_t game;
+int client_fds[2];
+
+// Structure to pass arguments to thread function
+typedef struct {
+    int connfd;
+    int player_num;
+} client_args_t;
+
 void init_game(game_state_t *game) {
     memset(game->board, ' ', BOARD_SIZE * BOARD_SIZE);
     game->current_player = 1;
@@ -82,27 +92,30 @@ int make_move(game_state_t *game, int row, int col, int player) {
     return 1;
 }
 
-void handle_client(int connfd, int player_num, game_state_t *game) {
+void *handle_client(void *arg) {
+    client_args_t *args = (client_args_t *)arg;
+    int connfd = args->connfd;
+    int player_num = args->player_num;
     message_t msg;
     rio_t rio;
     Rio_readinitb(&rio, connfd);
     
-    while (!game->game_over) {
-        if (game->current_player == player_num) {
+    while (!game.game_over) {
+        if (game.current_player == player_num) {
             // Send current game state
-            Rio_writen(connfd, game, sizeof(game_state_t));
+            Rio_writen(connfd, &game, sizeof(game_state_t));
             
             // Wait for move
             if (Rio_readnb(&rio, &msg, sizeof(message_t)) <= 0) {
                 printf("Client %d disconnected\n", player_num);
-                game->game_over = 1;
+                game.game_over = 1;
                 break;
             }
             
             if (msg.type == MSG_MOVE) {
-                if (make_move(game, msg.row, msg.col, player_num)) {
-                    print_board(game);
-                    if (game->game_over) {
+                if (make_move(&game, msg.row, msg.col, player_num)) {
+                    print_board(&game);
+                    if (game.game_over) {
                         msg.type = MSG_GAME_OVER;
                         sprintf(msg.message, "Player %d wins!", player_num);
                         Rio_writen(connfd, &msg, sizeof(message_t));
@@ -116,26 +129,26 @@ void handle_client(int connfd, int player_num, game_state_t *game) {
             }
         } else {
             // Send current game state
-            Rio_writen(connfd, game, sizeof(game_state_t));
+            Rio_writen(connfd, &game, sizeof(game_state_t));
             
             // Wait for other player's move
             if (Rio_readnb(&rio, &msg, sizeof(message_t)) <= 0) {
                 printf("Client %d disconnected\n", player_num);
-                game->game_over = 1;
+                game.game_over = 1;
                 break;
             }
         }
     }
+    free(args); // Free the allocated memory
+    return NULL;
 }
 
 int main(int argc, char **argv) {
     int listenfd, connfd;
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
-    char client_hostname[MAXLINE], client_port[MAXLINE];
-    game_state_t game;
+    char client_hostname[XO_MAXLINE], client_port[XO_MAXLINE];
     int player_count = 0;
-    int client_fds[2] = {-1, -1};
     
     if (argc != 2) {
         fprintf(stderr, "usage: %s <port>\n", argv[0]);
@@ -151,8 +164,8 @@ int main(int argc, char **argv) {
     while (player_count < 2) {
         clientlen = sizeof(struct sockaddr_storage);
         connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-        Getnameinfo((SA *)&clientaddr, clientlen, client_hostname, MAXLINE,
-                    client_port, MAXLINE, 0);
+        Getnameinfo((SA *)&clientaddr, clientlen, client_hostname, XO_MAXLINE,
+                    client_port, XO_MAXLINE, 0);
         printf("Connected to (%s, %s)\n", client_hostname, client_port);
         
         client_fds[player_count] = connfd;
@@ -162,10 +175,21 @@ int main(int argc, char **argv) {
             printf("Game starting!\n");
             // Create threads for each client
             pthread_t tid1, tid2;
-            Pthread_create(&tid1, NULL, (void *(*)(void *))handle_client, 
-                         (void *)(long)client_fds[0], 1, &game);
-            Pthread_create(&tid2, NULL, (void *(*)(void *))handle_client, 
-                         (void *)(long)client_fds[1], 2, &game);
+            
+            // Allocate memory for thread arguments
+            client_args_t *args1 = malloc(sizeof(client_args_t));
+            client_args_t *args2 = malloc(sizeof(client_args_t));
+            
+            // Set up arguments for first thread
+            args1->connfd = client_fds[0];
+            args1->player_num = 1;
+            
+            // Set up arguments for second thread
+            args2->connfd = client_fds[1];
+            args2->player_num = 2;
+            
+            Pthread_create(&tid1, NULL, handle_client, args1);
+            Pthread_create(&tid2, NULL, handle_client, args2);
             
             Pthread_join(tid1, NULL);
             Pthread_join(tid2, NULL);
