@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <dirent.h>
 
 
 /* Default file permissions are DEF_MODE & ~DEF_UMASK */
@@ -157,12 +158,12 @@ ssize_t Rio_readnb(rio_t *rp, void *usrbuf, size_t n);
 ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen);
 
 /* Client/server helper functions */
-int open_clientfd(char *hostname, int portno);
-int open_listenfd(int portno);
+int open_clientfd(char *hostname, char *port);
+int open_listenfd(char *port);
 
 /* Wrappers for client/server helper functions */
-int Open_clientfd(char *hostname, int port);
-int Open_listenfd(int port); 
+int Open_clientfd(char *hostname, char *port);
+int Open_listenfd(char *port); 
 
 #endif /* __CSAPP_H__ */
 /* $end csapp.h */
