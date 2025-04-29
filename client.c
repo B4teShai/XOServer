@@ -8,7 +8,7 @@
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_YELLOW  "\x1b[33m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
-#define MOVE_TIMEOUT 30  // seconds per move
+#define MOVE_TIMEOUT 30  // нэг хөдөлгөөнд хийх хугацаа
 
 void display_board(char board[][BOARD_SIZE]) {
     printf("\nCurrent Board State:\n");
@@ -55,12 +55,12 @@ int main(int argc, char **argv) {
             Rio_readn(connfd, board, BOARD_SIZE * BOARD_SIZE);
             display_board(board);
         } else if (msg_type == 'T') {
-            while (1) {  // Loop until a valid move is made
+            while (1) {  // Хүчинтэй хөдөлгөөн хийх хүртэл давтах
                 printf(ANSI_COLOR_YELLOW "Your move (row col): " ANSI_COLOR_RESET);
                 int row, col;
                 scanf("%d %d", &row, &col);
                 
-                // Basic input validation
+                // Үндсэн оролтын хүчинтэй эсэхийн шалгалт
                 if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
                     printf(ANSI_COLOR_RED "Invalid position! Please enter numbers between 0 and %d\n" ANSI_COLOR_RESET, 
                            BOARD_SIZE - 1);
@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
                 int col_net = htonl(col);
                 Rio_writen(connfd, &row_net, sizeof(row_net));
                 Rio_writen(connfd, &col_net, sizeof(col_net));
-                break;  // Exit the loop after sending the move
+                break;  // Хөдөлгөөнийг илгээсний дараа давталтаас гарах
             }
         } else if (msg_type == 'G') {
             int winner_net;

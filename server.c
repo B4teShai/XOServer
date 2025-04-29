@@ -8,7 +8,7 @@
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_YELLOW  "\x1b[33m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
-#define MOVE_TIMEOUT 30  // seconds per move
+#define MOVE_TIMEOUT 30  // нэг хөдөлгөөн хийх хугацаа
 
 typedef struct {
     int score;
@@ -16,42 +16,41 @@ typedef struct {
     time_t last_move_time;
 } PlayerStats;
 
-// Forward declaration of check_win function
+// check_win функцийн
 int check_win(char board[][BOARD_SIZE], int row, int col, char player);
 
-// Pattern definitions for advanced win checking
 typedef struct {
-    int pattern[5][2];  // Pattern coordinates relative to center
-    int weight;         // Pattern weight for scoring
+    int pattern[5][2];  // Төвтэй харьцуулсан  координатууд
+    int weight;         // Оноо авах загварын ж
 } Pattern;
 
-// Define winning patterns - only 5 in a row patterns
+// Зөвхөн 5 дараалсан ялах загваруудыг тодорхойлох
 const Pattern WIN_PATTERNS[] = {
-    // Horizontal
+    // Хэвтээ
     {{{0,0}, {0,1}, {0,2}, {0,3}, {0,4}}, 100},
-    // Vertical
+    // Босоо
     {{{0,0}, {1,0}, {2,0}, {3,0}, {4,0}}, 100},
-    // Diagonal (top-left to bottom-right)
+    // Диагональ (дээд зүүнээс доод баруун руу)
     {{{0,0}, {1,1}, {2,2}, {3,3}, {4,4}}, 100},
-    // Diagonal (top-right to bottom-left)
+    // Диагональ (дээд баруунаас доод зүүн рүү)
     {{{0,0}, {1,-1}, {2,-2}, {3,-3}, {4,-4}}, 100}
 };
 
-// Enhanced win checking with pattern recognition - only 5 in a row
+// Загвар таних 
 int check_win_enhanced(char board[][BOARD_SIZE], int row, int col, char player) {
-    // First check for immediate win using original algorithm
+    // Эхлээд анхны тодорхойлсон алгоритмыг ашиглан шууд ялалтыг шалгах
     if (check_win(board, row, col, player)) return 1;
     
-    // Check for 5 in a row patterns
+    // 5 дараалсан загваруудыг шалгах
     for (int i = 0; i < sizeof(WIN_PATTERNS)/sizeof(Pattern); i++) {
         int matches = 0;
         
-        // Check pattern in all possible positions around the last move
+        // Сүүлийн хөдөлгөөний эргэн тойронд бүх боломжит байрлалд загварыг шалгах
         for (int start_row = row - 4; start_row <= row; start_row++) {
             for (int start_col = col - 4; start_col <= col; start_col++) {
                 matches = 0;
                 
-                // Check each position in the pattern
+                // Загвар дахь байрлал бүрийг шалгах
                 for (int p = 0; p < 5; p++) {
                     int check_row = start_row + WIN_PATTERNS[i].pattern[p][0];
                     int check_col = start_col + WIN_PATTERNS[i].pattern[p][1];
@@ -64,7 +63,7 @@ int check_win_enhanced(char board[][BOARD_SIZE], int row, int col, char player) 
                     }
                 }
                 
-                // If we have 5 matches, it's a winning position
+                // Хэрэв 5 таарч байвал ялах байрлал
                 if (matches == 5) {
                     return 1;
                 }
@@ -74,7 +73,7 @@ int check_win_enhanced(char board[][BOARD_SIZE], int row, int col, char player) 
     return 0;
 }
 
-// Move validation using switch-case
+// хөдөлгөөний хүчинтэй эсэх
 typedef enum {
     MOVE_VALID,
     MOVE_OUT_OF_BOUNDS,
@@ -84,21 +83,19 @@ typedef enum {
 
 MoveValidationResult validate_move_enhanced(char board[][BOARD_SIZE], int row, int col, char *error_msg) {
     switch(1) {
-        case 1: // Check bounds
+        case 1: // Хүрээг шалгах
             if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
                 sprintf(error_msg, "Position (%d,%d) is out of bounds!", row, col);
                 return MOVE_OUT_OF_BOUNDS;
             }
-            // Fall through
             
-        case 2: // Check if occupied
+        case 2: // Аль хэдийн ашиглаглсан эсэх
             if (board[row][col] != ' ') {
                 sprintf(error_msg, "Position (%d,%d) is already occupied!", row, col);
                 return MOVE_OCCUPIED;
             }
-            // Fall through
             
-        case 3: // Additional validation rules can be added here
+        case 3: // Хүчинтэй
             return MOVE_VALID;
             
         default:
@@ -106,12 +103,11 @@ MoveValidationResult validate_move_enhanced(char board[][BOARD_SIZE], int row, i
     }
 }
 
-// Pattern-based strategy analyzer - simplified to only consider 5 in a row
 int analyze_position(char board[][BOARD_SIZE], int row, int col, char player) {
     int score = 0;
     char opponent = (player == 'X') ? 'O' : 'X';
     
-    // Check all patterns
+    // Бүх загваруудыг шалгах
     for (int i = 0; i < sizeof(WIN_PATTERNS)/sizeof(Pattern); i++) {
         for (int start_row = row - 4; start_row <= row; start_row++) {
             for (int start_col = col - 4; start_col <= col; start_col++) {
@@ -119,7 +115,7 @@ int analyze_position(char board[][BOARD_SIZE], int row, int col, char player) {
                 int opponent_count = 0;
                 int empty_count = 0;
                 
-                // Count pieces in pattern
+                // Загвар дахь хэсгүүдийг тоолох
                 for (int p = 0; p < 5; p++) {
                     int check_row = start_row + WIN_PATTERNS[i].pattern[p][0];
                     int check_col = start_col + WIN_PATTERNS[i].pattern[p][1];
@@ -136,7 +132,7 @@ int analyze_position(char board[][BOARD_SIZE], int row, int col, char player) {
                     }
                 }
                 
-                // Score the pattern - only consider 5 in a row
+                // Загварт оноо өгөх
                 if (player_count == 5) score += 1000;
                 else if (player_count == 4 && empty_count == 1) score += 100;
                 else if (opponent_count == 4 && empty_count == 1) score += 50;
@@ -165,7 +161,7 @@ int check_win(char board[][BOARD_SIZE], int row, int col, char player) {
             x -= dx;
             y -= dy;
         }
-        if (count >= 5) return 1;  // Only win with 5 in a row
+        if (count >= 5) return 1;  // Зөвхөн 5 дараалсан
     }
     return 0;
 }
@@ -175,7 +171,7 @@ void send_board(int connfd, char board[][BOARD_SIZE], PlayerStats *stats) {
     Rio_writen(connfd, &msg_type, 1);
     Rio_writen(connfd, board, BOARD_SIZE * BOARD_SIZE);
     
-    // Print the board on server side with colors and stats
+    // XO самбарыг хэвлэх
     printf("\nCurrent Board State (Move #%d):\n", stats[0].moves_made + stats[1].moves_made);
     printf("Scores - X: %d, O: %d\n", stats[0].score, stats[1].score);
     printf("  ");
@@ -237,7 +233,7 @@ int main(int argc, char **argv) {
     int game_over = 0;
     int winner = -1;
     char error_msg[100];
-    int move_analysis[2] = {0, 0};  // Track move quality for each player
+    int move_analysis[2] = {0, 0};  // Тоглогч бүрийн хөдөлгөөний чанар
 
     while (!game_over) {
         send_board(connfd1, board, stats);
@@ -247,7 +243,7 @@ int main(int argc, char **argv) {
         char turn_msg = 'T';
         Rio_writen(connfd_current, &turn_msg, 1);
 
-        // Start move timer
+        // Хөдөлгөөний хугацааг эхлүүлэх
         stats[current_player].last_move_time = time(NULL);
 
         int row_net, col_net;
@@ -256,11 +252,11 @@ int main(int argc, char **argv) {
         int row = ntohl(row_net);
         int col = ntohl(col_net);
 
-        // Check for timeout
+        // Хугацааны шалгалт
         time_t current_time = time(NULL);
         if (current_time - stats[current_player].last_move_time > MOVE_TIMEOUT) {
             printf("Player %c timed out!\n", current_player ? 'O' : 'X');
-            winner = !current_player;  // Other player wins by timeout
+            winner = !current_player;  // Бусад тоглогч хугацааны дагуу ялна
             game_over = 1;
             stats[!current_player].score += 1;
             break;
@@ -274,11 +270,11 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        // Analyze the move before making it
+        // Хөдөлгөөнийг хийхээс өмнө шинжлэх
         int move_score = analyze_position(board, row, col, current_player ? 'O' : 'X');
         move_analysis[current_player] += move_score;
         
-        // Make the move
+        // Хөдөлгөөнийг хийх
         board[row][col] = current_player ? 'O' : 'X';
         stats[current_player].moves_made++;
 
@@ -313,14 +309,14 @@ int main(int argc, char **argv) {
         current_player = !current_player;
     }
 
-    // Print final game statistics with enhanced analysis
+    // эцсийн тоглоомын статистик
     printf("\nGame Statistics:\n");
     printf("Player X: %d moves, Score: %d, Move Quality: %d\n", 
            stats[0].moves_made, stats[0].score, move_analysis[0]);
     printf("Player O: %d moves, Score: %d, Move Quality: %d\n", 
            stats[1].moves_made, stats[1].score, move_analysis[1]);
     
-    // Print move quality comparison
+    // Хөдөлгөөний чанарын харьцуулалт
     if (move_analysis[0] > move_analysis[1]) {
         printf("Player X played more strategically (higher move quality)\n");
     } else if (move_analysis[1] > move_analysis[0]) {
