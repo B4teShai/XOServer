@@ -1,17 +1,17 @@
 CC = gcc
-CFLAGS = -g -Wall -I.
-LDFLAGS = -lpthread
+CFLAGS = -g -Wall -I. -pthread
+LDFLAGS = 
 
 all: server client
 
-server: server.c csapp.o
-	$(CC) $(CFLAGS) -o server server.c csapp.o $(LDFLAGS)
+server: server.o csapp.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-client: client.c csapp.o
-	$(CC) $(CFLAGS) -o client client.c csapp.o $(LDFLAGS)
+client: client.o csapp.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-csapp.o: csapp.c csapp.h
-	$(CC) $(CFLAGS) -c csapp.c
+%.o: %.c csapp.h
+	$(CC) $(CFLAGS) -c $<
 
 clean:
-	rm -f server client *.o 
+	rm -f server client *.o

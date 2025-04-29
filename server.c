@@ -1,203 +1,107 @@
-#include "xo.h"
+#include "csapp.h"
+#include <stdint.h>
 
-// Global game state
-game_state_t game;
-int client_fds[2];
+#define BOARD_SIZE 20
 
-// Structure to pass arguments to thread function
-typedef struct {
-    int connfd;
-    int player_num;
-} client_args_t;
-
-void init_game(game_state_t *game) {
-    memset(game->board, ' ', BOARD_SIZE * BOARD_SIZE);
-    game->current_player = 1;
-    game->game_over = 0;
-    game->winner = 0;
-}
-
-void print_board(game_state_t *game) {
-    printf("\n  ");
-    for (int i = 0; i < BOARD_SIZE; i++) {
-        printf("%2d ", i);
-    }
-    printf("\n");
-    
-    for (int i = 0; i < BOARD_SIZE; i++) {
-        printf("%2d ", i);
-        for (int j = 0; j < BOARD_SIZE; j++) {
-            printf(" %c ", game->board[i][j]);
-            if (j < BOARD_SIZE - 1) printf("|");
+int check_win(char board[][BOARD_SIZE], int row, int col, char player) {
+    int directions[4][2] = {{0, 1}, {1, 0}, {1, 1}, {-1, 1}};
+    for (int d = 0; d < 4; d++) {
+        int dx = directions[d][0];
+        int dy = directions[d][1];
+        int count = 1;
+        int x = row + dx, y = col + dy;
+        while (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE && board[x][y] == player) {
+            count++;
+            x += dx;
+            y += dy;
         }
-        printf("\n");
-        if (i < BOARD_SIZE - 1) {
-            printf("   ");
-            for (int j = 0; j < BOARD_SIZE; j++) {
-                printf("---");
-                if (j < BOARD_SIZE - 1) printf("+");
-            }
-            printf("\n");
+        x = row - dx;
+        y = col - dy;
+        while (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE && board[x][y] == player) {
+            count++;
+            x -= dx;
+            y -= dy;
         }
+        if (count >= 5) return 1;
     }
-}
-
-int check_winner(game_state_t *game, int row, int col) {
-    char player = game->board[row][col];
-    int count;
-    
-    // Check horizontal
-    count = 1;
-    for (int i = col - 1; i >= 0 && game->board[row][i] == player; i--) count++;
-    for (int i = col + 1; i < BOARD_SIZE && game->board[row][i] == player; i++) count++;
-    if (count >= WIN_CONDITION) return 1;
-    
-    // Check vertical
-    count = 1;
-    for (int i = row - 1; i >= 0 && game->board[i][col] == player; i--) count++;
-    for (int i = row + 1; i < BOARD_SIZE && game->board[i][col] == player; i++) count++;
-    if (count >= WIN_CONDITION) return 1;
-    
-    // Check diagonal (top-left to bottom-right)
-    count = 1;
-    for (int i = 1; row - i >= 0 && col - i >= 0 && game->board[row-i][col-i] == player; i++) count++;
-    for (int i = 1; row + i < BOARD_SIZE && col + i < BOARD_SIZE && game->board[row+i][col+i] == player; i++) count++;
-    if (count >= WIN_CONDITION) return 1;
-    
-    // Check diagonal (top-right to bottom-left)
-    count = 1;
-    for (int i = 1; row - i >= 0 && col + i < BOARD_SIZE && game->board[row-i][col+i] == player; i++) count++;
-    for (int i = 1; row + i < BOARD_SIZE && col - i >= 0 && game->board[row+i][col-i] == player; i++) count++;
-    if (count >= WIN_CONDITION) return 1;
-    
     return 0;
 }
 
-int make_move(game_state_t *game, int row, int col, int player) {
-    if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
-        return 0;
-    }
-    if (game->board[row][col] != ' ') {
-        return 0;
-    }
-    
-    game->board[row][col] = (player == 1) ? 'X' : 'O';
-    if (check_winner(game, row, col)) {
-        game->game_over = 1;
-        game->winner = player;
-        return 1;
-    }
-    
-    game->current_player = (player == 1) ? 2 : 1;
-    return 1;
-}
-
-void *handle_client(void *arg) {
-    client_args_t *args = (client_args_t *)arg;
-    int connfd = args->connfd;
-    int player_num = args->player_num;
-    message_t msg;
-    rio_t rio;
-    Rio_readinitb(&rio, connfd);
-    
-    while (!game.game_over) {
-        if (game.current_player == player_num) {
-            // Send current game state
-            Rio_writen(connfd, &game, sizeof(game_state_t));
-            
-            // Wait for move
-            if (Rio_readnb(&rio, &msg, sizeof(message_t)) <= 0) {
-                printf("Client %d disconnected\n", player_num);
-                game.game_over = 1;
-                break;
-            }
-            
-            if (msg.type == MSG_MOVE) {
-                if (make_move(&game, msg.row, msg.col, player_num)) {
-                    print_board(&game);
-                    if (game.game_over) {
-                        msg.type = MSG_GAME_OVER;
-                        sprintf(msg.message, "Player %d wins!", player_num);
-                        Rio_writen(connfd, &msg, sizeof(message_t));
-                        break;
-                    }
-                } else {
-                    msg.type = MSG_ERROR;
-                    strcpy(msg.message, "Invalid move");
-                    Rio_writen(connfd, &msg, sizeof(message_t));
-                }
-            }
-        } else {
-            // Send current game state
-            Rio_writen(connfd, &game, sizeof(game_state_t));
-            
-            // Wait for other player's move
-            if (Rio_readnb(&rio, &msg, sizeof(message_t)) <= 0) {
-                printf("Client %d disconnected\n", player_num);
-                game.game_over = 1;
-                break;
-            }
-        }
-    }
-    free(args); // Free the allocated memory
-    return NULL;
+void send_board(int connfd, char board[][BOARD_SIZE]) {
+    char msg_type = 'B';
+    Rio_writen(connfd, &msg_type, 1);
+    Rio_writen(connfd, board, BOARD_SIZE * BOARD_SIZE);
 }
 
 int main(int argc, char **argv) {
-    int listenfd, connfd;
-    socklen_t clientlen;
-    struct sockaddr_storage clientaddr;
-    char client_hostname[XO_MAXLINE], client_port[XO_MAXLINE];
-    int player_count = 0;
-    
     if (argc != 2) {
-        fprintf(stderr, "usage: %s <port>\n", argv[0]);
-        exit(1);
+        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        exit(0);
     }
-    
-    listenfd = Open_listenfd(argv[1]);
-    init_game(&game);
-    
-    printf("Server started on port %s\n", argv[1]);
-    printf("Waiting for players...\n");
-    
-    while (player_count < 2) {
-        clientlen = sizeof(struct sockaddr_storage);
-        connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-        Getnameinfo((SA *)&clientaddr, clientlen, client_hostname, XO_MAXLINE,
-                    client_port, XO_MAXLINE, 0);
-        printf("Connected to (%s, %s)\n", client_hostname, client_port);
-        
-        client_fds[player_count] = connfd;
-        player_count++;
-        
-        if (player_count == 2) {
-            printf("Game starting!\n");
-            // Create threads for each client
-            pthread_t tid1, tid2;
-            
-            // Allocate memory for thread arguments
-            client_args_t *args1 = malloc(sizeof(client_args_t));
-            client_args_t *args2 = malloc(sizeof(client_args_t));
-            
-            // Set up arguments for first thread
-            args1->connfd = client_fds[0];
-            args1->player_num = 1;
-            
-            // Set up arguments for second thread
-            args2->connfd = client_fds[1];
-            args2->player_num = 2;
-            
-            Pthread_create(&tid1, NULL, handle_client, args1);
-            Pthread_create(&tid2, NULL, handle_client, args2);
-            
-            Pthread_join(tid1, NULL);
-            Pthread_join(tid2, NULL);
+
+    int listenfd = Open_listenfd(argv[1]);
+    printf("Server listening on port %s\n", argv[1]);
+
+    int connfd1 = Accept(listenfd, NULL, NULL);
+    printf("Client 1 connected. Assigned X.\n");
+    Rio_writen(connfd1, "X", 1);
+
+    int connfd2 = Accept(listenfd, NULL, NULL);
+    printf("Client 2 connected. Assigned O.\n");
+    Rio_writen(connfd2, "O", 1);
+
+    char board[BOARD_SIZE][BOARD_SIZE];
+    memset(board, ' ', sizeof(board));
+    int current_player = 0;
+    int game_over = 0;
+    int winner = -1;
+
+    while (!game_over) {
+        send_board(connfd1, board);
+        send_board(connfd2, board);
+
+        int connfd_current = current_player ? connfd2 : connfd1;
+        char turn_msg = 'T';
+        Rio_writen(connfd_current, &turn_msg, 1);
+
+        int row_net, col_net;
+        Rio_readn(connfd_current, &row_net, sizeof(row_net));
+        Rio_readn(connfd_current, &col_net, sizeof(col_net));
+        int row = ntohl(row_net);
+        int col = ntohl(col_net);
+
+        if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE || board[row][col] != ' ') {
+            fprintf(stderr, "Invalid move. Closing.\n");
+            break;
         }
+
+        board[row][col] = current_player ? 'O' : 'X';
+
+        if (check_win(board, row, col, board[row][col])) {
+            winner = current_player;
+            game_over = 1;
+        } else {
+            int is_draw = 1;
+            for (int i = 0; i < BOARD_SIZE; i++)
+                for (int j = 0; j < BOARD_SIZE; j++)
+                    if (board[i][j] == ' ') is_draw = 0;
+            if (is_draw) game_over = 1;
+        }
+
+        if (game_over) {
+            char game_over_msg = 'G';
+            int winner_net = htonl(winner);
+            Rio_writen(connfd1, &game_over_msg, 1);
+            Rio_writen(connfd1, &winner_net, sizeof(winner_net));
+            Rio_writen(connfd2, &game_over_msg, 1);
+            Rio_writen(connfd2, &winner_net, sizeof(winner_net));
+        }
+
+        current_player = !current_player;
     }
-    
+
+    Close(connfd1);
+    Close(connfd2);
     Close(listenfd);
-    Close(client_fds[0]);
-    Close(client_fds[1]);
-    exit(0);
-} 
+    return 0;
+}

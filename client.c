@@ -1,95 +1,59 @@
-#include "xo.h"
+#include "csapp.h"
+#include <stdint.h>
 
-void print_board(game_state_t *game) {
-    printf("\n  ");
+#define BOARD_SIZE 20
+
+void display_board(char board[][BOARD_SIZE]) {
+    printf("\n");
     for (int i = 0; i < BOARD_SIZE; i++) {
-        printf("%2d ", i);
+        for (int j = 0; j < BOARD_SIZE; j++)
+            printf("%c ", board[i][j]);
+        printf("\n");
     }
     printf("\n");
-    
-    for (int i = 0; i < BOARD_SIZE; i++) {
-        printf("%2d ", i);
-        for (int j = 0; j < BOARD_SIZE; j++) {
-            printf(" %c ", game->board[i][j]);
-            if (j < BOARD_SIZE - 1) printf("|");
-        }
-        printf("\n");
-        if (i < BOARD_SIZE - 1) {
-            printf("   ");
-            for (int j = 0; j < BOARD_SIZE; j++) {
-                printf("---");
-                if (j < BOARD_SIZE - 1) printf("+");
-            }
-            printf("\n");
-        }
-    }
 }
 
 int main(int argc, char **argv) {
-    int clientfd;
-    rio_t rio;
-    game_state_t game;
-    message_t msg;
-    char *host, *port;
-    
     if (argc != 3) {
-        fprintf(stderr, "usage: %s <host> <port>\n", argv[0]);
-        exit(1);
+        fprintf(stderr, "Usage: %s <host> <port>\n", argv[0]);
+        exit(0);
     }
-    
-    host = argv[1];
-    port = argv[2];
-    
-    clientfd = Open_clientfd(host, port);
-    Rio_readinitb(&rio, clientfd);
-    
-    printf("Connected to server\n");
-    printf("Waiting for game to start...\n");
-    
+
+    int connfd = Open_clientfd(argv[1], argv[2]);
+    char symbol;
+    Rio_readn(connfd, &symbol, 1);
+    printf("You are %c\n", symbol);
+
     while (1) {
-        // Receive game state
-        if (Rio_readnb(&rio, &game, sizeof(game_state_t)) <= 0) {
-            printf("Server disconnected\n");
+        char msg_type;
+        Rio_readn(connfd, &msg_type, 1);
+
+        if (msg_type == 'B') {
+            char board[BOARD_SIZE][BOARD_SIZE];
+            Rio_readn(connfd, board, BOARD_SIZE * BOARD_SIZE);
+            display_board(board);
+        } else if (msg_type == 'T') {
+            printf("Your move (row col): ");
+            int row, col;
+            scanf("%d %d", &row, &col);
+            int row_net = htonl(row);
+            int col_net = htonl(col);
+            Rio_writen(connfd, &row_net, sizeof(row_net));
+            Rio_writen(connfd, &col_net, sizeof(col_net));
+        } else if (msg_type == 'G') {
+            int winner_net;
+            Rio_readn(connfd, &winner_net, sizeof(winner_net));
+            int winner = ntohl(winner_net);
+            if (winner == -1)
+                printf("Draw!\n");
+            else if ((winner == 0 && symbol == 'X') || (winner == 1 && symbol == 'O'))
+                printf("You win!\n");
+            else
+                printf("You lose!\n");
             break;
-        }
-        
-        print_board(&game);
-        
-        if (game.game_over) {
-            if (game.winner > 0) {
-                printf("Game Over! Player %d wins!\n", game.winner);
-            } else {
-                printf("Game Over! Server disconnected\n");
-            }
-            break;
-        }
-        
-        if (game.current_player == 1) {
-            printf("Your turn (X)\n");
-            printf("Enter row and column (0-%d): ", BOARD_SIZE - 1);
-            
-            msg.type = MSG_MOVE;
-            if (scanf("%d %d", &msg.row, &msg.col) != 2) {
-                printf("Invalid input\n");
-                continue;
-            }
-            
-            Rio_writen(clientfd, &msg, sizeof(message_t));
-            
-            // Wait for server response
-            if (Rio_readnb(&rio, &msg, sizeof(message_t)) <= 0) {
-                printf("Server disconnected\n");
-                break;
-            }
-            
-            if (msg.type == MSG_ERROR) {
-                printf("Error: %s\n", msg.message);
-            }
-        } else {
-            printf("Waiting for opponent's move...\n");
         }
     }
-    
-    Close(clientfd);
-    exit(0);
-} 
+
+    Close(connfd);
+    return 0;
+}
