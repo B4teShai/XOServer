@@ -16,6 +16,136 @@ typedef struct {
     time_t last_move_time;
 } PlayerStats;
 
+// Forward declaration of check_win function
+int check_win(char board[][BOARD_SIZE], int row, int col, char player);
+
+// Pattern definitions for advanced win checking
+typedef struct {
+    int pattern[5][2];  // Pattern coordinates relative to center
+    int weight;         // Pattern weight for scoring
+} Pattern;
+
+// Define winning patterns - only 5 in a row patterns
+const Pattern WIN_PATTERNS[] = {
+    // Horizontal
+    {{{0,0}, {0,1}, {0,2}, {0,3}, {0,4}}, 100},
+    // Vertical
+    {{{0,0}, {1,0}, {2,0}, {3,0}, {4,0}}, 100},
+    // Diagonal (top-left to bottom-right)
+    {{{0,0}, {1,1}, {2,2}, {3,3}, {4,4}}, 100},
+    // Diagonal (top-right to bottom-left)
+    {{{0,0}, {1,-1}, {2,-2}, {3,-3}, {4,-4}}, 100}
+};
+
+// Enhanced win checking with pattern recognition - only 5 in a row
+int check_win_enhanced(char board[][BOARD_SIZE], int row, int col, char player) {
+    // First check for immediate win using original algorithm
+    if (check_win(board, row, col, player)) return 1;
+    
+    // Check for 5 in a row patterns
+    for (int i = 0; i < sizeof(WIN_PATTERNS)/sizeof(Pattern); i++) {
+        int matches = 0;
+        
+        // Check pattern in all possible positions around the last move
+        for (int start_row = row - 4; start_row <= row; start_row++) {
+            for (int start_col = col - 4; start_col <= col; start_col++) {
+                matches = 0;
+                
+                // Check each position in the pattern
+                for (int p = 0; p < 5; p++) {
+                    int check_row = start_row + WIN_PATTERNS[i].pattern[p][0];
+                    int check_col = start_col + WIN_PATTERNS[i].pattern[p][1];
+                    
+                    if (check_row >= 0 && check_row < BOARD_SIZE && 
+                        check_col >= 0 && check_col < BOARD_SIZE) {
+                        if (board[check_row][check_col] == player) {
+                            matches++;
+                        }
+                    }
+                }
+                
+                // If we have 5 matches, it's a winning position
+                if (matches == 5) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+// Move validation using switch-case
+typedef enum {
+    MOVE_VALID,
+    MOVE_OUT_OF_BOUNDS,
+    MOVE_OCCUPIED,
+    MOVE_INVALID
+} MoveValidationResult;
+
+MoveValidationResult validate_move_enhanced(char board[][BOARD_SIZE], int row, int col, char *error_msg) {
+    switch(1) {
+        case 1: // Check bounds
+            if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) {
+                sprintf(error_msg, "Position (%d,%d) is out of bounds!", row, col);
+                return MOVE_OUT_OF_BOUNDS;
+            }
+            // Fall through
+            
+        case 2: // Check if occupied
+            if (board[row][col] != ' ') {
+                sprintf(error_msg, "Position (%d,%d) is already occupied!", row, col);
+                return MOVE_OCCUPIED;
+            }
+            // Fall through
+            
+        case 3: // Additional validation rules can be added here
+            return MOVE_VALID;
+            
+        default:
+            return MOVE_INVALID;
+    }
+}
+
+// Pattern-based strategy analyzer - simplified to only consider 5 in a row
+int analyze_position(char board[][BOARD_SIZE], int row, int col, char player) {
+    int score = 0;
+    char opponent = (player == 'X') ? 'O' : 'X';
+    
+    // Check all patterns
+    for (int i = 0; i < sizeof(WIN_PATTERNS)/sizeof(Pattern); i++) {
+        for (int start_row = row - 4; start_row <= row; start_row++) {
+            for (int start_col = col - 4; start_col <= col; start_col++) {
+                int player_count = 0;
+                int opponent_count = 0;
+                int empty_count = 0;
+                
+                // Count pieces in pattern
+                for (int p = 0; p < 5; p++) {
+                    int check_row = start_row + WIN_PATTERNS[i].pattern[p][0];
+                    int check_col = start_col + WIN_PATTERNS[i].pattern[p][1];
+                    
+                    if (check_row >= 0 && check_row < BOARD_SIZE && 
+                        check_col >= 0 && check_col < BOARD_SIZE) {
+                        if (board[check_row][check_col] == player) {
+                            player_count++;
+                        } else if (board[check_row][check_col] == opponent) {
+                            opponent_count++;
+                        } else if (board[check_row][check_col] == ' ') {
+                            empty_count++;
+                        }
+                    }
+                }
+                
+                // Score the pattern - only consider 5 in a row
+                if (player_count == 5) score += 1000;
+                else if (player_count == 4 && empty_count == 1) score += 100;
+                else if (opponent_count == 4 && empty_count == 1) score += 50;
+            }
+        }
+    }
+    return score;
+}
+
 int check_win(char board[][BOARD_SIZE], int row, int col, char player) {
     int directions[4][2] = {{0, 1}, {1, 0}, {1, 1}, {-1, 1}};
     for (int d = 0; d < 4; d++) {
@@ -35,7 +165,7 @@ int check_win(char board[][BOARD_SIZE], int row, int col, char player) {
             x -= dx;
             y -= dy;
         }
-        if (count >= 5) return 1;
+        if (count >= 5) return 1;  // Only win with 5 in a row
     }
     return 0;
 }
@@ -107,6 +237,7 @@ int main(int argc, char **argv) {
     int game_over = 0;
     int winner = -1;
     char error_msg[100];
+    int move_analysis[2] = {0, 0};  // Track move quality for each player
 
     while (!game_over) {
         send_board(connfd1, board, stats);
@@ -135,20 +266,26 @@ int main(int argc, char **argv) {
             break;
         }
 
-        if (!validate_move(board, row, col, error_msg)) {
+        MoveValidationResult validation_result = validate_move_enhanced(board, row, col, error_msg);
+        if (validation_result != MOVE_VALID) {
             fprintf(stderr, "Invalid move: %s\n", error_msg);
             printf("Player %c made an invalid move at (%d,%d), please try again\n", 
                    current_player ? 'O' : 'X', row, col);
-            continue;  // Skip the rest of the loop and ask for a new move
+            continue;
         }
 
+        // Analyze the move before making it
+        int move_score = analyze_position(board, row, col, current_player ? 'O' : 'X');
+        move_analysis[current_player] += move_score;
+        
+        // Make the move
         board[row][col] = current_player ? 'O' : 'X';
         stats[current_player].moves_made++;
 
-        printf("Player %c made a move at position (%d, %d)\n", 
-               current_player ? 'O' : 'X', row, col);
+        printf("Player %c made a move at position (%d, %d) with score %d\n", 
+               current_player ? 'O' : 'X', row, col, move_score);
 
-        if (check_win(board, row, col, board[row][col])) {
+        if (check_win_enhanced(board, row, col, board[row][col])) {
             winner = current_player;
             game_over = 1;
             stats[current_player].score += 1;
@@ -176,10 +313,21 @@ int main(int argc, char **argv) {
         current_player = !current_player;
     }
 
-    // Print final game statistics
+    // Print final game statistics with enhanced analysis
     printf("\nGame Statistics:\n");
-    printf("Player X: %d moves, Score: %d\n", stats[0].moves_made, stats[0].score);
-    printf("Player O: %d moves, Score: %d\n", stats[1].moves_made, stats[1].score);
+    printf("Player X: %d moves, Score: %d, Move Quality: %d\n", 
+           stats[0].moves_made, stats[0].score, move_analysis[0]);
+    printf("Player O: %d moves, Score: %d, Move Quality: %d\n", 
+           stats[1].moves_made, stats[1].score, move_analysis[1]);
+    
+    // Print move quality comparison
+    if (move_analysis[0] > move_analysis[1]) {
+        printf("Player X played more strategically (higher move quality)\n");
+    } else if (move_analysis[1] > move_analysis[0]) {
+        printf("Player O played more strategically (higher move quality)\n");
+    } else {
+        printf("Both players showed similar strategic play\n");
+    }
 
     Close(connfd1);
     Close(connfd2);
